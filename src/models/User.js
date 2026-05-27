@@ -68,7 +68,7 @@ userSchema.methods.generateRefreshToken= function (){
         id:this._id,
         email:this.email,
         username:this.username,
-        fullname: this.fullname
+        name:this.name
     },
     process.env.REFRESH_TOKEN_SCERET,
     {

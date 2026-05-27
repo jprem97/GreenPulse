@@ -4,7 +4,22 @@ import User from "../models/User.js";
 import Agent from "../models/Agent.js"; // FIX: was missing — caused crash when creating agent profile on register
 
 
+const generateAccessAndRefereshTokens = async(userId) =>{
+    try {
+        const user = await User.findById(userId)
+        const accessToken = user.generateAccessToken()
+        const refreshToken = user.generateRefreshToken()
 
+        user.refreshToken = refreshToken
+        await user.save({ validateBeforeSave: false })
+
+        return {accessToken, refreshToken}
+
+
+    } catch (error) {
+        throw new ApiError(500, "Something went wrong while generating referesh and access token")
+    }
+}
 
 
 export const register = async (req, res) => {
@@ -25,9 +40,21 @@ export const register = async (req, res) => {
     });
 
     
+    const profilePicPath = req.file.path;
+    const profilePic = await cloudUpload(profilePicPath)
 
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
+     if (!profilePicPath) {
+      return res.status(400).json({ message: "error" });
+    }
+     const user = await User.create({
+        fullname,
+        avatar: profilePic.url,
+        email,
+        password,
+        username
+    }
+    )
+        const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(user._id)
 
     user.refreshToken = refreshToken;
     await user.save();
@@ -46,7 +73,7 @@ export const register = async (req, res) => {
       .json({
         message: "Registered successfully",
         accessToken,
-        user: { id: user._id, name: user.name, email: user.email, role: user.role }
+        user: { id: user._id, name: user.name, email: user.email }
       });
 
   } catch (err) {
@@ -71,8 +98,8 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
+    const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(user._id)
+
 
     user.refreshToken = refreshToken;
     await user.save();
@@ -99,39 +126,8 @@ export const login = async (req, res) => {
   }
 };
 
-/* =========================
-   REFRESH TOKEN
-========================= */
 
-export const refreshToken = async (req, res) => {
-  try {
-    const token = req.cookies.refreshToken;
 
-    if (!token) {
-      return res.status(401).json({ message: "No refresh token" });
-    }
-
-    const decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
-    const user = await User.findById(decoded.id);
-
-    if (!user || user.refreshToken !== token) {
-      return res.status(401).json({ message: "Invalid refresh token" });
-    }
-
-    const newAccessToken = generateAccessToken(user);
-
-    res.cookie("accessToken", newAccessToken, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: false
-    });
-
-    res.json({ message: "Access token refreshed" });
-
-  } catch (err) {
-    res.status(401).json({ message: "Invalid refresh token" });
-  }
-};
 
 /* =========================
    LOGOUT
