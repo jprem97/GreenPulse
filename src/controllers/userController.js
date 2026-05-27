@@ -3,34 +3,13 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import Agent from "../models/Agent.js"; // FIX: was missing — caused crash when creating agent profile on register
 
-/* =========================
-   TOKEN HELPERS
-========================= */
 
-export const generateAccessToken = (user) => {
-  return jwt.sign(
-    { id: user._id, role: user.role },
-    process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: process.env.ACCESS_TOKEN_EXPIRY }
-  );
-};
 
-export const generateRefreshToken = (user) => {
-  return jwt.sign(
-    { id: user._id },
-    process.env.REFRESH_TOKEN_SECRET,
-    { expiresIn: process.env.REFRESH_TOKEN_EXPIRY }
-  );
-};
 
-/* =========================
-   REGISTER
-========================= */
 
 export const register = async (req, res) => {
   try {
-    // FIX: added `location` to destructuring — was missing, causing all agents to get location "Unknown"
-    const { name, email, password, role, location } = req.body;
+    const { name, email, password } = req.body;
 
     const existing = await User.findOne({ email });
     if (existing) {
@@ -43,20 +22,9 @@ export const register = async (req, res) => {
       name,
       email,
       password: hashed,
-      role: role || "AGENT"
     });
 
-    // FIX: Agent import was missing above — now works correctly
-    if (user.role === "AGENT") {
-      await Agent.create({
-        user: user._id,
-        location: location || "Unknown",
-        serviceAreas: [location || "Unknown"],
-        currentLoad: 0,
-        performanceScore: 0,
-        notifications: []
-      });
-    }
+    
 
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);

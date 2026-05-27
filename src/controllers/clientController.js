@@ -1,7 +1,7 @@
 import Client from "../models/Client.js";
 import Agent from "../models/Agent.js";
 import Property from "../models/Property.js";
-import { assignAgent } from "../utils/assignAgent.js";
+import { assignAgent } from "../utils/cloudinary.js";
 
 export const createClient = async (req, res) => {
   try {

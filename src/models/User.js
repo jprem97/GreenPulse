@@ -1,5 +1,3 @@
-// models/User.js
-
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema({
@@ -48,7 +46,6 @@ const userSchema = new mongoose.Schema({
     default: "BEGINNER"
   },
 
-  // Store refresh token
   refreshToken: {
     type: String,
     default: null
