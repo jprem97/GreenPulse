@@ -77,7 +77,7 @@ export const imgHandler = async (req, res) => {
 
       [
 
-        "./ai/ecoModel.py",
+        "./ml/ecoModel.py",
 
         req.file.path
       ]
