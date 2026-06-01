@@ -40,22 +40,27 @@ export const register = async (req, res) => {
     }
 
     const profilePicPath = req.file.path;
-    const profilePic = await cloudUpload(profilePicPath);
     if (!fs.existsSync(profilePicPath)) {
       return res.status(400).json({ message: "Profile picture file not found" });
     }
-    
 
+    const profilePic = await cloudUpload(profilePicPath);
     if (!profilePic || !(profilePic.secure_url || profilePic.url)) {
       if (fs.existsSync(profilePicPath)) fs.unlinkSync(profilePicPath);
       return res.status(500).json({ message: "Profile picture upload failed" });
     }
-    
+
+    // Hash password here only if it's not already hashed (avoid double-hashing)
+    let passwordToSave = password;
+    if (password && typeof password === "string" && !password.startsWith("$2")) {
+      passwordToSave = await bcrypt.hash(password, 10);
+    }
+
     const user = await User.create({
       name,
       email,
-      password,
-      profilePic: profilePic.url
+      password: passwordToSave,
+      profilePic: profilePic.secure_url || profilePic.url
     });
 
     const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(user._id);

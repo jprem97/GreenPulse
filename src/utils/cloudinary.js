@@ -1,7 +1,7 @@
 import { v2 as cod } from "cloudinary";
 import fs from "fs";
 cod.config({
-  cloud_name: 'anonymous',
+  cloud_name: 'dhr1lsc8m',
   api_key: process.env.CLOUDK,
   api_secret: process.env.CLOUDS
 });
