@@ -6,12 +6,7 @@ import { fileURLToPath } from "url";
 
 // ROUTES
 import userRoutes from "./routes/userRoutes.js";
-import clientRoutes from "./routes/clientRoutes.js";
-import propertyRoutes from "./routes/propertyRoutes.js";
-import dealRoutes from "./routes/dealRoutes.js";
-import activityRoutes from "./routes/activityRoutes.js";
-import agentRoutes from "./routes/agentRoutes.js";
-import adminRoutes from "./routes/adminRoutes.js";
+import imageRoutes from "./routes/imageRouter.js"
 
 const app = express();
 
@@ -25,19 +20,9 @@ app.use(cookieParser()); // FIX: was registered AFTER routes — cookies were ne
 
 // API Routes
 app.use("/api/users", userRoutes);
-app.use("/api/clients", clientRoutes);
-app.use("/api/properties", propertyRoutes);
-app.use("/api/deals", dealRoutes);
-app.use("/api/activities", activityRoutes);
-app.use("/api/agents", agentRoutes);
-app.use("/api/admin", adminRoutes);
-// // Serve Frontend (frontend folder)
-// app.use(express.static(frontendPath));
+app.use("/api/analyzer", imageRoutes);
 
-// // Root + fallback
-// app.use((req, res) => {
-//   res.sendFile(path.join(frontendPath, "index.html"));
-// });
+
 app.get("/", (req, res) => {
   res.send("API is running 🚀");
 });

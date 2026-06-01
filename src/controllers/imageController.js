@@ -3,7 +3,7 @@ import crypto from "crypto";
 
 import { spawn } from "child_process";
 
-import cloudUpload from "../utils/cloudinary.js";
+import { cloudUpload } from "../utils/cloudinary.js";
 
 import Image from "../models/Image.js";
 

@@ -1,26 +1,30 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import fs from "fs";
 import User from "../models/User.js";
-import Agent from "../models/Agent.js"; // FIX: was missing — caused crash when creating agent profile on register
+import  { cloudUpload }  from "../utils/cloudinary.js"; 
 
 
-const generateAccessAndRefereshTokens = async(userId) =>{
-    try {
-        const user = await User.findById(userId)
-        const accessToken = user.generateAccessToken()
-        const refreshToken = user.generateRefreshToken()
+const generateAccessAndRefereshTokens = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
 
-        user.refreshToken = refreshToken
-        await user.save({ validateBeforeSave: false })
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
 
-        return {accessToken, refreshToken}
+    return { accessToken, refreshToken };
+
+  } catch (error) {
+    throw new Error("Something went wrong while generating refresh and access token"); 
+  }
+};
 
 
-    } catch (error) {
-        throw new ApiError(500, "Something went wrong while generating referesh and access token")
-    }
-}
-
+/* =========================
+   REGISTER
+========================= */
 
 export const register = async (req, res) => {
   try {
@@ -31,35 +35,34 @@ export const register = async (req, res) => {
       return res.status(400).json({ message: "Email already registered" });
     }
 
-    const hashed = await bcrypt.hash(password, 10);
+    if (!req.file || !req.file.path) {
+      return res.status(400).json({ message: "Profile picture is required" });
+    }
 
+    const profilePicPath = req.file.path;
+    const profilePic = await cloudUpload(profilePicPath);
+    if (!fs.existsSync(profilePicPath)) {
+      return res.status(400).json({ message: "Profile picture file not found" });
+    }
+    
+
+    if (!profilePic || !(profilePic.secure_url || profilePic.url)) {
+      if (fs.existsSync(profilePicPath)) fs.unlinkSync(profilePicPath);
+      return res.status(500).json({ message: "Profile picture upload failed" });
+    }
+    
     const user = await User.create({
       name,
       email,
-      password: hashed,
+      password,
+      profilePic: profilePic.url
     });
 
-    
-    const profilePicPath = req.file.path;
-    const profilePic = await cloudUpload(profilePicPath)
+    const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(user._id);
 
-     if (!profilePicPath) {
-      return res.status(400).json({ message: "error" });
-    }
-     const user = await User.create({
-        fullname,
-        avatar: profilePic.url,
-        email,
-        password,
-        username
-    }
-    )
-        const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(user._id)
+    // FIX: removed redundant user.refreshToken + save() — generator already handles it
 
-    user.refreshToken = refreshToken;
-    await user.save();
-
-    res    
+    res
       .cookie("accessToken", accessToken, {
         httpOnly: true,
         sameSite: "lax",
@@ -84,6 +87,7 @@ export const register = async (req, res) => {
   }
 };
 
+
 /* =========================
    LOGIN
 ========================= */
@@ -98,11 +102,9 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(user._id)
+    const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(user._id);
 
-
-    user.refreshToken = refreshToken;
-    await user.save();
+    // FIX: removed redundant user.refreshToken + save() — generator already handles it
 
     res
       .cookie("accessToken", accessToken, {
@@ -127,8 +129,6 @@ export const login = async (req, res) => {
 };
 
 
-
-
 /* =========================
    LOGOUT
 ========================= */
@@ -146,14 +146,12 @@ export const logout = async (req, res) => {
       }
     }
 
-    // FIX: cookies are now always cleared regardless of token validity
     res
       .clearCookie("accessToken")
       .clearCookie("refreshToken")
       .json({ message: "Logged out" });
 
   } catch (err) {
-    // FIX: even in outer catch, clear cookies so client is truly logged out
     res
       .clearCookie("accessToken")
       .clearCookie("refreshToken")

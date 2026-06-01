@@ -6,7 +6,7 @@ cod.config({
   api_secret: process.env.CLOUDS
 });
 
-const cloudUpload = async (filePath) => {
+export const cloudUpload = async (filePath) => {
   if(!filePath) return ;
   try {
     const resultUpload = await cod.uploader.upload(filePath)
@@ -20,4 +20,3 @@ const cloudUpload = async (filePath) => {
 
 }
 
-export default cloudUpload ;

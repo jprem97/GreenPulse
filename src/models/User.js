@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
 const userSchema = new mongoose.Schema({
 
@@ -21,10 +23,10 @@ const userSchema = new mongoose.Schema({
     required: true
   },
 
- gp: {
-   type: Number,
-   default: 0
-},
+  gp: {
+    type: Number,
+    default: 0
+  },
 
   ip: {
     type: Number,
@@ -53,47 +55,42 @@ const userSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-userSchema.pre("save",async function  (next){
-    if(!this.isModified("password")) return next();
-    this.password=await bcrypt.hash(this.password,10)
-    next();
-})
-userSchema.methods.isPasswordcorrect=async function (password){
-  return await bycrpt.compare(password,this.password)
-}
+userSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) return next();
+  this.password = await bcrypt.hash(this.password, 10);
+  next();
+});
 
-userSchema.methods.generateRefreshToken= function (){
-   return  jwt.encrption(
+userSchema.methods.isPasswordCorrect = async function (password) {
+  return await bcrypt.compare(password, this.password); // FIX: was "bycrpt" (typo)
+};
+
+userSchema.methods.generateRefreshToken = function () {
+  return jwt.sign( // FIX: was "jwt.encrption" (wrong method + typo)
     {
-        id:this._id,
-        email:this.email,
-        username:this.username,
-        name:this.name
+      id: this._id,
+      email: this.email,
+      name: this.name
     },
-    process.env.REFRESH_TOKEN_SCERET,
+    process.env.REFRESH_TOKEN_SECRET, // FIX: was REFRESH_TOKEN_SCERET (typo)
     {
-        expiresIn: process.env.REFRESH_TOKEN_EXPIRY
+      expiresIn: process.env.REFRESH_TOKEN_EXPIRY
     }
- 
+  );
+};
 
-)}
-
-userSchema.methods.generateAccessToken = function ()
-{
-     return  jwt.encrption(
+userSchema.methods.generateAccessToken = function () {
+  return jwt.sign( // FIX: was "jwt.encrption" (wrong method + typo)
     {
-        id:this._id,
-        email:this.email,
-        username:this.username,
-        fullname: this.fullname
+      id: this._id,
+      email: this.email,
+      name: this.name
     },
-    process.env.REFRESH_TOKEN_SCERET,
+    process.env.ACCESS_TOKEN_SECRET, // FIX: was incorrectly using REFRESH_TOKEN_SECRET
     {
-        expiresIn: process.env.REFRESH_TOKEN_EXPIRY
+      expiresIn: process.env.ACCESS_TOKEN_EXPIRY // FIX: was incorrectly using REFRESH_TOKEN_EXPIRY
     }
- 
-
-)
-}
+  );
+};
 
 export default mongoose.model("User", userSchema);
