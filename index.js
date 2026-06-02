@@ -6,8 +6,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 🔥 force correct .env loading
 dotenv.config({
-  path: path.resolve(__dirname, "../.env"),
-  debug:true
+  path: path.resolve(__dirname, ".env"),
+  debug: true
 });
 
 import connectDB from "./src/db/index.js";

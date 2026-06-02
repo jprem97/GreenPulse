@@ -16,6 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Middlewares — must be before routes
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser()); // FIX: was registered AFTER routes — cookies were never parsed
 
 // API Routes
