@@ -66,7 +66,7 @@ export const imgHandler = async (req, res) => {
     // LOCATE PYTHON SCRIPT
     // ===================================================
 
-    const pythonScript = path.resolve(__dirname, "../ml/ecoModel.py");
+    const pythonScript = path.resolve(__dirname, "../ml/ecoModel2.py");
 
     if (!fs.existsSync(pythonScript)) {
       fs.unlinkSync(req.file.path);
