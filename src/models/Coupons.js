@@ -30,17 +30,29 @@ const couponSchema = new mongoose.Schema({
     ref: "User"
   }],
 
-  launchDate: {
-    type: Date,
-    default: Date.now
+  savedBy: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
+  }],
+
+  expiryDate: {
+    type: Date
   },
 
   status: {
     type: String,
-    enum: ["ACTIVE", "EXPIRED"],
+    enum: [
+      "ACTIVE",
+      "EXPIRED"
+    ],
     default: "ACTIVE"
   }
 
-}, { timestamps: true });
+}, {
+  timestamps: true
+});
 
-export default mongoose.model("Coupon", couponSchema); 
+export default mongoose.model(
+  "Coupon",
+  couponSchema
+);
