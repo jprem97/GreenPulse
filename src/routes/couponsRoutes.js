@@ -1,13 +1,12 @@
 import express from "express";
 
-import { Coupon } from "../models/Coupons.js";
 
 import {
   getCoupons,
   myCoupons,
   toggleSaveCoupon,
   redeemCoupon
-} from "../controllers/coupons.Controllerjs";
+} from "../controllers/couponsController.js";
 
 import {
   createCoupon,

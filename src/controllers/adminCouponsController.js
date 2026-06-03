@@ -1,3 +1,6 @@
+import Coupon from "../models/Coupons.js";
+
+
 export const createCoupon = async (
   req,
   res
