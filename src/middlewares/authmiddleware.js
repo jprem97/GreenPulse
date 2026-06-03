@@ -6,18 +6,15 @@ export const protect = async (req, res, next) => {
     let accessToken = req.cookies.accessToken || req.headers.authorization?.replace('Bearer ', '');
     const refreshToken = req.cookies.refreshToken;
 
-    // 1. If access token exists → try to verify it
     if (accessToken) {
       try {
         const decoded = jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET);
         req.user = await User.findById(decoded.id).select("-password");
         return next();
       } catch {
-        // expired → fall through to refresh logic
       }
     }
 
-    // 2. Try refresh token
     if (refreshToken) {
       try {
         const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
@@ -47,7 +44,6 @@ export const protect = async (req, res, next) => {
       }
     }
 
-    // 3. No tokens
     return res.status(401).json({ message: "Not authenticated" });
 
   } catch (err) {
@@ -55,8 +51,6 @@ export const protect = async (req, res, next) => {
   }
 };
 
-// ROLE GUARD
-// FIX: added null-check on req.user to prevent crash if protect somehow didn't set it
 export const authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {

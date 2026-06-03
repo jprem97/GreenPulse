@@ -8,11 +8,6 @@ import { imgHandler } from "../controllers/imagecontroller.js";
 
 const router = express.Router();
 
-router.post(
-  "/analyze",
-  protect,
-  upload.single("image"),
-  imgHandler
-);
+router.post("/analyze", protect, upload.single("image"), imgHandler);
 
 export default router;

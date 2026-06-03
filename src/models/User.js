@@ -62,17 +62,17 @@ userSchema.pre("save", async function (next) {
 });
 
 userSchema.methods.isPasswordCorrect = async function (password) {
-  return await bcrypt.compare(password, this.password); // FIX: was "bycrpt" (typo)
+  return await bcrypt.compare(password, this.password);
 };
 
 userSchema.methods.generateRefreshToken = function () {
-  return jwt.sign( // FIX: was "jwt.encrption" (wrong method + typo)
+  return jwt.sign(
     {
       id: this._id,
       email: this.email,
       name: this.name
     },
-    process.env.REFRESH_TOKEN_SECRET, // FIX: was REFRESH_TOKEN_SCERET (typo)
+    process.env.REFRESH_TOKEN_SECRET,
     {
       expiresIn: process.env.REFRESH_TOKEN_EXPIRY
     }
@@ -80,15 +80,15 @@ userSchema.methods.generateRefreshToken = function () {
 };
 
 userSchema.methods.generateAccessToken = function () {
-  return jwt.sign( // FIX: was "jwt.encrption" (wrong method + typo)
+  return jwt.sign(
     {
       id: this._id,
       email: this.email,
       name: this.name
     },
-    process.env.ACCESS_TOKEN_SECRET, // FIX: was incorrectly using REFRESH_TOKEN_SECRET
+    process.env.ACCESS_TOKEN_SECRET,
     {
-      expiresIn: process.env.ACCESS_TOKEN_EXPIRY // FIX: was incorrectly using REFRESH_TOKEN_EXPIRY
+      expiresIn: process.env.ACCESS_TOKEN_EXPIRY
     }
   );
 };

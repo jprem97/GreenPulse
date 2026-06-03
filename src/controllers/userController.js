@@ -21,11 +21,6 @@ const generateAccessAndRefereshTokens = async (userId) => {
   }
 };
 
-
-/* =========================
-   REGISTER
-========================= */
-
 export const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -50,7 +45,6 @@ export const register = async (req, res) => {
       return res.status(500).json({ message: "Profile picture upload failed" });
     }
 
-    // Hash password here only if it's not already hashed (avoid double-hashing)
     let passwordToSave = password;
     if (password && typeof password === "string" && !password.startsWith("$2")) {
       passwordToSave = await bcrypt.hash(password, 10);
@@ -64,8 +58,6 @@ export const register = async (req, res) => {
     });
 
     const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(user._id);
-
-    // FIX: removed redundant user.refreshToken + save() — generator already handles it
 
     res
       .cookie("accessToken", accessToken, {
@@ -92,10 +84,6 @@ export const register = async (req, res) => {
   }
 };
 
-
-/* =========================
-   LOGIN
-========================= */
 
 export const login = async (req, res) => {
   try {
@@ -142,10 +130,6 @@ export const login = async (req, res) => {
 };
 
 
-/* =========================
-   LOGOUT
-========================= */
-
 export const logout = async (req, res) => {
   try {
     const token = req.cookies.refreshToken;
@@ -155,7 +139,6 @@ export const logout = async (req, res) => {
         const decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
         await User.findByIdAndUpdate(decoded.id, { refreshToken: null });
       } catch {
-        // token invalid but we still clear cookies below
       }
     }
 
@@ -171,3 +154,12 @@ export const logout = async (req, res) => {
       .json({ message: "Logged out" });
   }
 };
+
+
+export const  profile = ()=>{
+  try {
+    
+  } catch (error) {
+    
+  }
+}

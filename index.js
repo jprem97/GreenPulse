@@ -4,14 +4,13 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// 🔥 force correct .env loading
 dotenv.config({
   path: path.resolve(__dirname, ".env"),
   debug: true
 });
 
 import connectDB from "./src/db/index.js";
-import app from "./src/app.js" // ✔ fixed
+import app from "./src/app.js"
 
 connectDB()
   .then(() => {

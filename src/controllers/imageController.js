@@ -7,6 +7,7 @@ import path from "path";
 
 import { cloudUpload } from "../utils/cloudinary.js";
 
+import User from "../models/User.js";
 import Image from "../models/Image.js";
 
 export const imgHandler = async (req, res) => {
@@ -15,20 +16,12 @@ export const imgHandler = async (req, res) => {
 
   try {
 
-    // ===================================================
-    // CHECK FILE
-    // ===================================================
-
     if (!req.file) {
       return res.status(400).json({
         success: false,
         message: "No image uploaded",
       });
     }
-
-    // ===================================================
-    // READ FILE
-    // ===================================================
 
     if (!req.file.path || !fs.existsSync(req.file.path)) {
       return res.status(400).json({
@@ -39,18 +32,10 @@ export const imgHandler = async (req, res) => {
 
     const fileBuffer = fs.readFileSync(req.file.path);
 
-    // ===================================================
-    // GENERATE HASH
-    // ===================================================
-
     const hash = crypto
       .createHash("sha256")
       .update(fileBuffer)
       .digest("hex");
-
-    // ===================================================
-    // DUPLICATE CHECK
-    // ===================================================
 
     const oldImage = await Image.findOne({ imageHash: hash });
 
@@ -62,10 +47,6 @@ export const imgHandler = async (req, res) => {
       });
     }
 
-    // ===================================================
-    // LOCATE PYTHON SCRIPT
-    // ===================================================
-
     const pythonScript = path.resolve(__dirname, "../ml/ecoModel2.py");
 
     if (!fs.existsSync(pythonScript)) {
@@ -76,10 +57,6 @@ export const imgHandler = async (req, res) => {
         error:   pythonScript,
       });
     }
-
-    // ===================================================
-    // RUN PYTHON MODEL
-    // ===================================================
 
     const pythonCmd     = process.env.PYTHON || "./.venv/Scripts/python.exe";
     const pythonProcess = spawn(pythonCmd, [pythonScript, req.file.path]);
@@ -96,13 +73,8 @@ export const imgHandler = async (req, res) => {
       console.log("Python stderr:", data.toString());
     });
 
-    // ===================================================
-    // WHEN PYTHON FINISHES
-    // ===================================================
-
     pythonProcess.on("close", async (code) => {
 
-      // helper: clean up local file and respond
       const cleanup = () => {
         if (req.file && fs.existsSync(req.file.path)) {
           fs.unlinkSync(req.file.path);
@@ -110,10 +82,6 @@ export const imgHandler = async (req, res) => {
       };
 
       try {
-
-        // ==============================================
-        // VALIDATE RAW OUTPUT
-        // ==============================================
 
         if (!resultData || resultData.trim() === "") {
           cleanup();
@@ -124,10 +92,6 @@ export const imgHandler = async (req, res) => {
             details: stderrData || `process exited with code ${code}`,
           });
         }
-
-        // ==============================================
-        // PARSE JSON
-        // ==============================================
 
         let aiResult;
         try {
@@ -142,15 +106,6 @@ export const imgHandler = async (req, res) => {
           });
         }
 
-        // ==============================================
-        // REJECT INVALID — before any upload or DB write
-        //
-        // Python is the single source of truth.
-        // If it says INVALID, stop here.
-        // Do NOT upload to Cloudinary.
-        // Do NOT save to the database.
-        // ==============================================
-
         if (aiResult.classification === "INVALID") {
           cleanup();
           return res.status(400).json({
@@ -162,11 +117,6 @@ export const imgHandler = async (req, res) => {
           });
         }
 
-        // ==============================================
-        // UPLOAD TO CLOUDINARY
-        // Only reached for GOOD / MEDIUM / BAD
-        // ==============================================
-
         const uploadedImage = await cloudUpload(req.file.path);
 
         if (!uploadedImage) {
@@ -177,35 +127,38 @@ export const imgHandler = async (req, res) => {
           });
         }
 
-        // local file no longer needed after upload
         cleanup();
-
-        // ==============================================
-        // SAVE TO DATABASE
-        // All scored fields come from Python — never
-        // computed independently in Node.js.
-        // ==============================================
 
         const savedImage = await Image.create({
           user:             req.user._id,
           imageUrl:         uploadedImage.secure_url,
           imageHash:        hash,
           imageType:        "WASTE",
-          classification:   aiResult.classification,    // Python only
-          confidenceScore:  aiResult.score,             // Python only
-          score:            aiResult.score,             // Python only
-          ecoPointsAwarded: aiResult.gp,                // Python only
-          detectedObjects:  aiResult.detectedObjects,   // Python only
-          sceneAnalysis:    aiResult.sceneAnalysis,      // Python only
-          feedback:         aiResult.feedback,           // Python only
+          classification:   aiResult.classification,
+          confidenceScore:  aiResult.score,
+          score:            aiResult.score,
+          ecoPointsAwarded: aiResult.gp,
+          detectedObjects:  aiResult.detectedObjects,
+          sceneAnalysis:    aiResult.sceneAnalysis,
+          feedback:         aiResult.feedback,
           isBlurry:         false,
           isDuplicate:      false,
           isFraudulent:     false,
         });
 
-        // ==============================================
-        // SUCCESS RESPONSE
-        // ==============================================
+        let updatedUser = null;
+        try {
+          const points = Number(aiResult.gp) || 0;
+          if (points > 0 && req.user && req.user._id) {
+            updatedUser = await User.findByIdAndUpdate(
+              req.user._id,
+              { $inc: { gp: points } },
+              { new: true }
+            );
+          }
+        } catch (uErr) {
+          console.error("Failed to update user gp:", uErr.message || uErr);
+        }
 
         return res.status(200).json({
           success: true,
@@ -213,6 +166,7 @@ export const imgHandler = async (req, res) => {
         });
 
       } catch (error) {
+          userGp: updatedUser ? updatedUser.gp : undefined,
         cleanup();
         return res.status(500).json({
           success: false,
