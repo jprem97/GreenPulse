@@ -2,7 +2,8 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import fs from "fs";
 import User from "../models/User.js";
-import  { cloudUpload }  from "../utils/cloudinary.js"; 
+import  { cloudUpload }  from "../utils/cloudinary.js";
+import { getLevelProgress, ACHIEVEMENTS } from "../utils/levels.js"; 
 
 
 const generateAccessAndRefereshTokens = async (userId) => {
@@ -20,6 +21,38 @@ const generateAccessAndRefereshTokens = async (userId) => {
     throw new Error("Something went wrong while generating refresh and access token"); 
   }
 };
+
+function buildUserResponse(user) {
+  const levelProgress = getLevelProgress(user.gp);
+  const stats = {
+    totalImages: user.totalImages || 0,
+    bestScore: user.bestScore || 0,
+    maxSingleGP: user.maxSingleGP || 0,
+    goodCount: user.goodCount || 0,
+    streak: user.streak || 0,
+    totalGP: user.gp || 0,
+    levelIndex: levelProgress.index,
+  };
+  const achievements = ACHIEVEMENTS
+    .filter(a => a.condition(stats))
+    .map(a => a.id);
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    profilePic: user.profilePic,
+    gp: user.gp,
+    level: user.level,
+    totalImages: user.totalImages || 0,
+    bestScore: user.bestScore || 0,
+    maxSingleGP: user.maxSingleGP || 0,
+    goodCount: user.goodCount || 0,
+    streak: user.streak || 0,
+    levelProgress,
+    achievements,
+  };
+}
 
 export const register = async (req, res) => {
   try {
@@ -45,15 +78,10 @@ export const register = async (req, res) => {
       return res.status(500).json({ message: "Profile picture upload failed" });
     }
 
-    let passwordToSave = password;
-    if (password && typeof password === "string" && !password.startsWith("$2")) {
-      passwordToSave = await bcrypt.hash(password, 10);
-    }
-
     const user = await User.create({
       name,
       email,
-      password: passwordToSave,
+      password,
       profilePic: profilePic.secure_url || profilePic.url
     });
 
@@ -73,7 +101,7 @@ export const register = async (req, res) => {
       .json({
         message: "Registered successfully",
         accessToken,
-        user: { id: user._id, name: user.name, email: user.email }
+        user: buildUserResponse(user)
       });
 
   } catch (err) {
@@ -121,7 +149,7 @@ export const login = async (req, res) => {
       .json({
         message: "Login successful",
         accessToken,
-        user: { id: user._id, name: user.name, email: user.email, role: user.role }
+        user: buildUserResponse(user)
       });
 
   } catch (err) {

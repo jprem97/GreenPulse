@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { LEVELS, getLevelForGP } from "../utils/levels.js";
 
 const userSchema = new mongoose.Schema({
 
@@ -28,24 +29,55 @@ const userSchema = new mongoose.Schema({
     default: 0
   },
 
-  ip: {
-    type: Number,
-    default: 0
-  },
-
   profilePic: {
     type: String
   },
 
   level: {
     type: String,
-    enum: [
-      "BEGINNER",
-      "GREEN_WARRIOR",
-      "ECO_HERO",
-      "PLANET_GUARDIAN"
-    ],
-    default: "BEGINNER"
+    enum: LEVELS.map(l => l.name),
+    default: "SEEDLING"
+  },
+
+  role: {
+    type: String,
+    enum: ["USER", "ADMIN"],
+    default: "USER"
+  },
+
+  totalImages: {
+    type: Number,
+    default: 0
+  },
+
+  bestScore: {
+    type: Number,
+    default: 0
+  },
+
+  maxSingleGP: {
+    type: Number,
+    default: 0
+  },
+
+  goodCount: {
+    type: Number,
+    default: 0
+  },
+
+  streak: {
+    type: Number,
+    default: 0
+  },
+
+  lastUploadDate: {
+    type: Date,
+    default: null
+  },
+
+  unlockedAchievements: {
+    type: [String],
+    default: []
   },
 
   refreshToken: {
@@ -60,6 +92,11 @@ userSchema.pre("save", async function (next) {
   this.password = await bcrypt.hash(this.password, 10);
   next();
 });
+
+userSchema.methods.updateLevel = function () {
+  const lvl = getLevelForGP(this.gp);
+  this.level = lvl.name;
+};
 
 userSchema.methods.isPasswordCorrect = async function (password) {
   return await bcrypt.compare(password, this.password);

@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import path from "path";
 
 import { cloudUpload } from "../utils/cloudinary.js";
+import { computeStreak } from "../utils/levels.js";
 
 import User from "../models/User.js";
 import Image from "../models/Image.js";
@@ -150,11 +151,36 @@ export const imgHandler = async (req, res) => {
         try {
           const points = Number(aiResult.gp) || 0;
           if (points > 0 && req.user && req.user._id) {
+            const updates = { $inc: { gp: points, totalImages: 1 } };
+
+            if (aiResult.score > 0) {
+              updates.$max = { bestScore: aiResult.score };
+            }
+            if (points > 0) {
+              updates.$max = { ...updates.$max, maxSingleGP: points };
+            }
+            if (aiResult.classification === "GOOD") {
+              updates.$inc.goodCount = 1;
+            }
+
+            updates.lastUploadDate = new Date();
+
+            const beforeUser = await User.findById(req.user._id);
+            const oldStreak = beforeUser?.streak || 0;
+            const oldDate = beforeUser?.lastUploadDate;
+            const newStreak = computeStreak(oldDate, oldStreak);
+            updates.streak = newStreak;
+
             updatedUser = await User.findByIdAndUpdate(
               req.user._id,
-              { $inc: { gp: points } },
+              updates,
               { new: true }
             );
+
+            if (updatedUser) {
+              updatedUser.updateLevel();
+              await updatedUser.save({ validateBeforeSave: false });
+            }
           }
         } catch (uErr) {
           console.error("Failed to update user gp:", uErr.message || uErr);
@@ -163,10 +189,15 @@ export const imgHandler = async (req, res) => {
         return res.status(200).json({
           success: true,
           data:    savedImage,
+          updatedUser: updatedUser ? {
+            gp: updatedUser.gp,
+            level: updatedUser.level,
+            totalImages: updatedUser.totalImages,
+            streak: updatedUser.streak,
+          } : null,
         });
 
       } catch (error) {
-          userGp: updatedUser ? updatedUser.gp : undefined,
         cleanup();
         return res.status(500).json({
           success: false,
