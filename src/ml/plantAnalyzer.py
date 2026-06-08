@@ -27,19 +27,41 @@ def analyze_plant_image(
     if previous_image_path and os.path.exists(previous_image_path):
         previous_image = Image.open(previous_image_path)
 
+    from datetime import datetime
+    current_month = datetime.now().strftime("%B")
+
     stage_context = ""
     if is_first_upload:
         stage_context = f"""
 This is the FIRST upload (Week {current_week}) for a {total_weeks}-week journey.
 
-CRITICAL: The user was instructed to write the verification code "{verification_code}" on a piece of paper and place it visible near the plant.
+CRITICAL VERIFICATION CODE CHECK:
+The user was instructed to write the verification code "{verification_code}" on a piece of paper and place it visible near the plant.
 
-You MUST verify:
+You MUST verify ALL of the following:
 1. A handwritten code "{verification_code}" is clearly visible in the image
-2. The code is written on paper/card and placed near the plant
-3. A real plant is visible in the image
+2. The code is written on paper/card with a pen/marker (NOT printed, NOT on a screen)
+3. The code is placed physically near the plant (not overlaid digitally)
+4. A real plant is visible in the image
 
-If the code "{verification_code}" is NOT visible or does not match, set valid=false and explain why.
+VERIFICATION CODE FRAUD DETECTION:
+- Printed or typed code = FRAUD (code must be handwritten)
+- Code displayed on a phone/laptop screen = FRAUD
+- Code digitally overlaid on the image = FRAUD
+- Code written on a whiteboard instead of paper = FRAUD
+- Code is blurry, partially hidden, or unreadable = INVALID
+- Multiple codes visible = FRAUD
+- Code from a different plantation (different format) = FRAUD
+
+Set verificationCodeDetected to true ONLY if you can clearly see a handwritten code in the image.
+Set verificationCodeMatches to true ONLY if the visible code exactly matches "{verification_code}".
+If the code "{verification_code}" is NOT visible, does not match, or appears printed/digital, set valid=false and fraudDetected=true.
+
+IMAGE AUTHENTICITY CHECK:
+- Is this a real camera photo of a physical scene?
+- Does it show natural lighting and shadows?
+- Are there signs of digital manipulation?
+- Is the resolution and quality consistent with a phone camera?
 """
     else:
         stage_context = f"""
@@ -48,10 +70,29 @@ This is upload for Week {current_week} of a {total_weeks}-week journey.
 The PREVIOUS stage image is provided as the SECOND image for comparison.
 
 You MUST evaluate:
-1. Is this the SAME plant as the previous image?
+1. Is this the SAME plant as the previous image? (same species, same pot/location)
 2. Has VISIBLE growth occurred since the last upload?
 3. Is the growth realistic for {current_week - (current_week // 2)} weeks of elapsed time?
 4. Is the plant healthy?
+
+SUBSEQUENT UPLOAD FRAUD DETECTION:
+- If the same image is uploaded twice = FRAUD
+- If a different plant species is shown = FRAUD (different plant)
+- If the plant appears unchanged and it's been weeks = likely NOT the same plant
+- If growth is unrealistic (e.g., seed to full tree in 1 week) = FRAUD
+- Screenshots, AI-generated images, stock photos = FRAUD
+
+VERIFICATION CODE IN SUBSEQUENT UPLOADS:
+- The verification code is NOT required in the image for subsequent uploads
+- If a code IS visible, check if it matches "{verification_code}"
+- Set verificationCodeDetected to true if a code is visible, false otherwise
+- Set verificationCodeMatches to true if the visible code matches "{verification_code}"
+
+GROWTH ESTIMATION:
+- Estimate the growth percentage compared to what's expected at this stage
+- Compare leaf count, stem height, flower/fruit development
+- Consider the plant type ({plant_type}) and typical growth rate
+- Current month is {current_month} - factor in seasonal growth patterns
 """
 
     prompt = f"""
@@ -62,6 +103,7 @@ PLANT DETAILS:
 - Plant Type: {plant_type}
 - Current Week: {current_week} of {total_weeks}
 - Verification Code: {verification_code}
+- Current Month: {current_month}
 
 {stage_context}
 
@@ -78,40 +120,61 @@ Reject the image immediately if ANY of the following apply:
 - Plant is too small to evaluate growth
 - Unrealistic growth progression (e.g., seed to full tree in 1 week)
 
-FRAUD DETECTION:
-- Same image uploaded twice = fraud
-- Different plant species = fraud
-- Stock photo or internet image = fraud
-- AI-generated plant image = fraud
-- Verification code mismatch (first upload) = fraud
+FRAUD DETECTION RULES:
+- Same image uploaded twice = FRAUD
+- Different plant species = FRAUD
+- Stock photo or internet image = FRAUD
+- AI-generated plant image = FRAUD
+- Verification code mismatch (first upload) = FRAUD
+- Printed/digital verification code (first upload) = FRAUD
+- Code displayed on screen (first upload) = FRAUD
+- Photo of a photo = FRAUD
+- Heavily filtered/edited image = FRAUD
+
+SOIL AND ENVIRONMENT ASSESSMENT:
+- Is the plant in a reasonable pot/container for its type?
+- Does the soil look appropriate (not artificial)?
+- Is the growing environment realistic (indoor/outdoor)?
+- Are there signs of care (watering, sunlight)?
 
 GROWTH EVALUATION:
 - Compare current image with previous image when available
 - Look for: new leaves, stem growth, flower buds, fruit development
 - Growth must be proportional to elapsed time
 - Healthy plants show vibrant color, firm stems, no wilting
+- Estimate overall growth progress as a percentage
 
 Return ONLY valid JSON with this EXACT schema:
 
 {{
   "valid": true or false,
   "samePlant": true or false,
+  "verificationCodeDetected": true or false,
+  "verificationCodeMatches": true or false,
   "growthDetected": true or false,
   "growthQuality": "EXCELLENT" or "GOOD" or "FAIR" or "POOR" or "NONE",
   "plantHealth": "EXCELLENT" or "GOOD" or "FAIR" or "POOR" or "DEAD",
   "fraudDetected": true or false,
+  "fraudType": "NONE" or "DUPLICATE_IMAGE" or "DIFFERENT_PLANT" or "AI_GENERATED" or "STOCK_PHOTO" or "VERIFICATION_CODE_TAMPERED" or "PRINTED_CODE" or "SCREENSHOT" or "OTHER",
+  "growthPercentage": 0 to 100,
   "score": 0 to 100,
-  "feedback": ["feedback1", "feedback2"]
+  "feedback": ["feedback1", "feedback2", "feedback3"]
 }}
 
 Score Guidelines:
-- 90-100: Excellent growth, healthy plant, verified code visible
-- 70-89: Good growth, healthy plant
-- 50-69: Some growth, moderate health
-- 30-49: Poor growth or health issues
-- 0-29: No growth, unhealthy, or suspicious
+- 90-100: Excellent growth, healthy plant, verified code visible, perfect environment
+- 70-89: Good growth, healthy plant, good environment
+- 50-69: Some growth, moderate health, acceptable environment
+- 30-49: Poor growth or health issues, environment concerns
+- 0-29: No growth, unhealthy, suspicious, or fraud detected
 
-Be strict. Authenticity is the top priority.
+Feedback Guidelines:
+- Provide 2-4 specific, actionable feedback items
+- Mention specific observations (leaf count, color, size)
+- Include tips for improvement when score is below 70
+- Note any concerns about authenticity or health
+
+Be strict. Authenticity is the top priority. A fake image should never pass.
 """
 
     if previous_image:
@@ -123,7 +186,14 @@ Be strict. Authenticity is the top priority.
     text = text.replace("```json", "")
     text = text.replace("```", "")
 
-    return json.loads(text)
+    result = json.loads(text)
+
+    if "fraudType" not in result:
+        result["fraudType"] = "OTHER" if result.get("fraudDetected") else "NONE"
+    if "growthPercentage" not in result:
+        result["growthPercentage"] = 0
+
+    return result
 
 
 if __name__ == "__main__":
@@ -155,10 +225,14 @@ if __name__ == "__main__":
                 {
                     "valid": False,
                     "samePlant": False,
+                    "verificationCodeDetected": False,
+                    "verificationCodeMatches": False,
                     "growthDetected": False,
                     "growthQuality": "NONE",
                     "plantHealth": "POOR",
                     "fraudDetected": True,
+                    "fraudType": "OTHER",
+                    "growthPercentage": 0,
                     "score": 0,
                     "feedback": [str(e)],
                 }

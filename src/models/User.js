@@ -90,6 +90,31 @@ const userSchema = new mongoose.Schema({
     default: false
   },
 
+  totalPlantations: {
+    type: Number,
+    default: 0
+  },
+
+  completedPlantations: {
+    type: Number,
+    default: 0
+  },
+
+  bestPlantAvgScore: {
+    type: Number,
+    default: 0
+  },
+
+  maxPlantStreak: {
+    type: Number,
+    default: 0
+  },
+
+  verifiedUploads: {
+    type: Number,
+    default: 0
+  },
+
   refreshToken: {
     type: String,
     default: null

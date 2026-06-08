@@ -8,6 +8,8 @@ const uploadSchema = new mongoose.Schema({
   aiResponse: {
     valid: { type: Boolean, default: false },
     samePlant: { type: Boolean, default: false },
+    verificationCodeDetected: { type: Boolean, default: false },
+    verificationCodeMatches: { type: Boolean, default: false },
     growthDetected: { type: Boolean, default: false },
     growthQuality: { type: String, default: "POOR" },
     plantHealth: { type: String, default: "POOR" },
@@ -57,6 +59,14 @@ const plantSchema = new mongoose.Schema(
     totalGp: {
       type: Number,
       default: 0,
+    },
+    plantStreak: {
+      type: Number,
+      default: 0,
+    },
+    lastUploadWeek: {
+      type: Number,
+      default: null,
     },
     uploads: [uploadSchema],
   },

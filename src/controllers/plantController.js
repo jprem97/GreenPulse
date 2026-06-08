@@ -10,12 +10,17 @@ import User from "../models/User.js";
 import {
   getStagesForDuration,
   getNextStage,
-  isFirstUpload,
   isJourneyComplete,
   calculateStageGP,
   generateVerificationCode,
+  calculatePlantStreak,
+  calculateStreakBonus,
+  isUploadOnSchedule,
+  getCompletionBonusWithMultiplier,
+  getCurrentWeek,
+  isStageUnlocked,
+  getNextUnlockedStage,
   CREATION_GP,
-  COMPLETION_GP,
 } from "../utils/plantStages.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -69,6 +74,7 @@ export const createPlantation = async (req, res) => {
     const user = await User.findById(req.user._id);
     if (user) {
       user.gp = (user.gp || 0) + CREATION_GP;
+      user.totalPlantations = (user.totalPlantations || 0) + 1;
       user.updateLevel();
       await user.save({ validateBeforeSave: false });
     }
@@ -141,16 +147,16 @@ export const uploadPlantStage = async (req, res) => {
 
     const stages = getStagesForDuration(plant.durationWeeks);
     const firstStage = stages[0];
-    const is_first = isFirstUpload(plant.durationWeeks);
+    const is_first = plant.uploads.length === 0;
     const expectedNext = is_first
       ? firstStage
-      : getNextStage(plant.durationWeeks, plant.currentStage);
+      : getNextUnlockedStage(plant.durationWeeks, plant.createdAt, plant.uploads);
 
     if (expectedNext === null) {
       fs.unlinkSync(req.file.path);
       return res
         .status(400)
-        .json({ success: false, message: "All stages already completed" });
+        .json({ success: false, message: "All stages already completed or no stage is currently unlocked" });
     }
 
     const alreadyUploaded = plant.uploads.some(
@@ -163,18 +169,54 @@ export const uploadPlantStage = async (req, res) => {
         .json({ success: false, message: "Stage already completed" });
     }
 
+    if (!is_first && !isStageUnlocked(plant.durationWeeks, plant.createdAt, expectedNext)) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        message: `Week ${expectedNext} is not yet available. Please wait until the correct time to upload.`,
+      });
+    }
+
+    // Upload frequency limit: max 1 per 24 hours per plantation
+    if (plant.uploads.length > 0) {
+      const lastUpload = plant.uploads[plant.uploads.length - 1];
+      const hoursSinceLastUpload = (Date.now() - new Date(lastUpload.uploadedAt).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceLastUpload < 24) {
+        fs.unlinkSync(req.file.path);
+        return res.status(429).json({
+          success: false,
+          message: `Please wait ${Math.ceil(24 - hoursSinceLastUpload)} hours before uploading again`,
+        });
+      }
+    }
+
     const fileBuffer = fs.readFileSync(req.file.path);
     const hash = crypto
       .createHash("sha256")
       .update(fileBuffer)
       .digest("hex");
 
+    // Duplicate detection within same plantation
     const duplicateInPlant = plant.uploads.some((u) => u.imageHash === hash);
     if (duplicateInPlant) {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({
         success: false,
         message: "Duplicate image detected for this plantation",
+      });
+    }
+
+    // Cross-plantation duplicate detection
+    const duplicateInOtherPlant = await Plant.findOne({
+      user: req.user._id,
+      _id: { $ne: plant._id },
+      "uploads.imageHash": hash,
+    });
+    if (duplicateInOtherPlant) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        message: "This image was already used in another plantation",
       });
     }
 
@@ -261,13 +303,33 @@ export const uploadPlantStage = async (req, res) => {
           });
         }
 
-        if (!aiResult.valid || aiResult.fraudDetected) {
+        // Enhanced verification code fraud detection
+        const verificationFailed = is_first
+          ? aiResult.verificationCodeDetected === false ||
+            aiResult.verificationCodeMatches === false
+          : false;
+
+        // Subsequent upload: must confirm same plant
+        const samePlantFailed = !is_first && aiResult.samePlant === false;
+
+        // Timeline validation: check if upload is on schedule
+        const onSchedule = isUploadOnSchedule(plant.uploads, plant.durationWeeks, expectedNext);
+
+        if (
+          !aiResult.valid ||
+          aiResult.fraudDetected ||
+          samePlantFailed ||
+          verificationFailed
+        ) {
           cleanup();
           return res.status(400).json({
             success: false,
             message:
               aiResult.feedback?.join(". ") || "Image validation failed",
             aiResponse: aiResult,
+            fraudType: aiResult.fraudDetected ? "AI_DETECTED" : 
+                       verificationFailed ? "VERIFICATION_FAILED" :
+                       samePlantFailed ? "DIFFERENT_PLANT" : "INVALID",
           });
         }
 
@@ -283,20 +345,33 @@ export const uploadPlantStage = async (req, res) => {
 
         const totalStages = stages.length;
         const stageIndex = stages.indexOf(expectedNext);
+        const growthQuality = aiResult.growthQuality || "POOR";
         const gpAwarded = calculateStageGP(
           plant.plantType,
           stageIndex,
           totalStages,
-          aiResult.score
+          aiResult.score,
+          growthQuality
         );
+
+        // Calculate streak bonus
+        const newStreak = calculatePlantStreak(
+          [...plant.uploads, { week: expectedNext }],
+          plant.durationWeeks
+        );
+        const streakBonus = calculateStreakBonus(newStreak);
+
+        const totalStageGp = gpAwarded + streakBonus;
 
         plant.uploads.push({
           week: expectedNext,
           imageUrl: uploadedImage.secure_url,
-          gpAwarded,
+          gpAwarded: totalStageGp,
           aiResponse: {
             valid: aiResult.valid,
             samePlant: aiResult.samePlant,
+            verificationCodeDetected: aiResult.verificationCodeDetected,
+            verificationCodeMatches: aiResult.verificationCodeMatches,
             growthDetected: aiResult.growthDetected,
             growthQuality: aiResult.growthQuality,
             plantHealth: aiResult.plantHealth,
@@ -304,18 +379,23 @@ export const uploadPlantStage = async (req, res) => {
             score: aiResult.score,
             feedback: aiResult.feedback || [],
           },
-          verificationCodeVerified: is_first,
+          verificationCodeVerified: aiResult.verificationCodeMatches === true,
           uploadedAt: new Date(),
           imageHash: hash,
         });
 
         plant.currentStage = expectedNext;
-        plant.totalGp += gpAwarded;
+        plant.totalGp += totalStageGp;
+        plant.plantStreak = newStreak;
+        plant.lastUploadWeek = expectedNext;
 
         let completionBonus = 0;
         if (isJourneyComplete(plant.durationWeeks, expectedNext)) {
           plant.status = "COMPLETED";
-          completionBonus = COMPLETION_GP;
+          completionBonus = getCompletionBonusWithMultiplier(
+            plant.durationWeeks,
+            plant.uploads
+          );
           plant.totalGp += completionBonus;
         }
 
@@ -323,7 +403,20 @@ export const uploadPlantStage = async (req, res) => {
 
         const user = await User.findById(req.user._id);
         if (user) {
-          user.gp = (user.gp || 0) + gpAwarded + completionBonus;
+          user.gp = (user.gp || 0) + totalStageGp + completionBonus;
+          if (aiResult.verificationCodeMatches) {
+            user.verifiedUploads = (user.verifiedUploads || 0) + 1;
+          }
+          if (plant.status === "COMPLETED") {
+            user.completedPlantations = (user.completedPlantations || 0) + 1;
+            const avgScore = plant.uploads.reduce((sum, u) => sum + (u.aiResponse?.score || 0), 0) / plant.uploads.length;
+            if (avgScore > (user.bestPlantAvgScore || 0)) {
+              user.bestPlantAvgScore = Math.round(avgScore);
+            }
+          }
+          if (newStreak > (user.maxPlantStreak || 0)) {
+            user.maxPlantStreak = newStreak;
+          }
           user.updateLevel();
           await user.save({ validateBeforeSave: false });
         }
@@ -334,9 +427,10 @@ export const uploadPlantStage = async (req, res) => {
           success: true,
           message:
             plant.status === "COMPLETED"
-              ? "Journey completed! +50 GP completion bonus!"
+              ? `Journey completed! +${completionBonus} GP completion bonus!`
               : "Stage uploaded successfully",
-          gpAwarded: gpAwarded + completionBonus,
+          gpAwarded: totalStageGp,
+          streakBonus,
           completionBonus,
           totalGp: plant.totalGp,
           currentStage: expectedNext,
@@ -372,18 +466,44 @@ export const getMyPlantations = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      plants: plants.map((p) => ({
-        id: p._id,
-        plantName: p.plantName,
-        plantType: p.plantType,
-        durationWeeks: p.durationWeeks,
-        currentStage: p.currentStage,
-        status: p.status,
-        totalGp: p.totalGp,
-        stages: getStagesForDuration(p.durationWeeks),
-        uploadCount: p.uploads.length,
-        createdAt: p.createdAt,
-      })),
+      plants: plants.map((p) => {
+        const stages = getStagesForDuration(p.durationWeeks);
+        const currentWeek = getCurrentWeek(p.createdAt);
+        const unlockedStage = isJourneyComplete(p.durationWeeks, p.currentStage)
+          ? null
+          : getNextUnlockedStage(p.durationWeeks, p.createdAt, p.uploads);
+        const nextStage = isJourneyComplete(p.durationWeeks, p.currentStage)
+          ? null
+          : getNextStage(p.durationWeeks, p.currentStage);
+
+        return {
+          id: p._id,
+          plantName: p.plantName,
+          plantType: p.plantType,
+          durationWeeks: p.durationWeeks,
+          currentStage: p.currentStage,
+          currentWeek,
+          unlockedStage,
+          nextStage,
+          status: p.status,
+          totalGp: p.totalGp,
+          plantStreak: p.plantStreak || 0,
+          stages,
+          uploads: p.uploads.map((u) => ({
+            week: u.week,
+            imageUrl: u.imageUrl,
+            gpAwarded: u.gpAwarded,
+            aiResponse: {
+              score: u.aiResponse?.score,
+              growthQuality: u.aiResponse?.growthQuality,
+              plantHealth: u.aiResponse?.plantHealth,
+            },
+            uploadedAt: u.uploadedAt,
+          })),
+          uploadCount: p.uploads.length,
+          createdAt: p.createdAt,
+        };
+      }),
     });
   } catch (error) {
     return res.status(500).json({
@@ -411,6 +531,10 @@ export const getPlantationById = async (req, res) => {
     }
 
     const stages = getStagesForDuration(plant.durationWeeks);
+    const currentWeek = getCurrentWeek(plant.createdAt);
+    const unlockedStage = isJourneyComplete(plant.durationWeeks, plant.currentStage)
+      ? null
+      : getNextUnlockedStage(plant.durationWeeks, plant.createdAt, plant.uploads);
     const nextStage = isJourneyComplete(plant.durationWeeks, plant.currentStage)
       ? null
       : getNextStage(plant.durationWeeks, plant.currentStage);
@@ -424,9 +548,12 @@ export const getPlantationById = async (req, res) => {
         durationWeeks: plant.durationWeeks,
         verificationCode: plant.verificationCode,
         currentStage: plant.currentStage,
+        currentWeek,
+        unlockedStage,
         nextStage,
         status: plant.status,
         totalGp: plant.totalGp,
+        plantStreak: plant.plantStreak || 0,
         stages,
         uploads: plant.uploads.map((u) => ({
           week: u.week,
