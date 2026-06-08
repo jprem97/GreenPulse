@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import userRoutes from "./routes/userRoutes.js";
 import imageRoutes from "./routes/imageRouter.js";
 import couponsRoutes from "./routes/couponsRoutes.js";
+import plantRoutes from "./routes/plantRoutes.js";
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use(cookieParser());
 app.use("/api/users", userRoutes);
 app.use("/api/analyzer", imageRoutes);
 app.use("/api/coupons", couponsRoutes);
+app.use("/api/plants", plantRoutes);
 
 
 app.get("/", (req, res) => {

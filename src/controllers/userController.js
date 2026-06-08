@@ -49,6 +49,8 @@ function buildUserResponse(user) {
     maxSingleGP: user.maxSingleGP || 0,
     goodCount: user.goodCount || 0,
     streak: user.streak || 0,
+    duplicateWarnings: user.duplicateWarnings || 0,
+    isFlagged: user.isFlagged || false,
     levelProgress,
     achievements,
   };

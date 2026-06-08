@@ -42,9 +42,32 @@ export const imgHandler = async (req, res) => {
 
     if (oldImage) {
       fs.unlinkSync(req.file.path);
+
+      const currentUser = await User.findById(req.user._id);
+      const newWarnings = (currentUser.duplicateWarnings || 0) + 1;
+      const updateFields = { duplicateWarnings: newWarnings };
+
+      if (newWarnings >= 5 && !currentUser.isFlagged) {
+        updateFields.isFlagged = true;
+      }
+
+      await User.findByIdAndUpdate(req.user._id, updateFields);
+
+      let warningMessage = "This image has already been used. Please upload a new image.";
+      if (newWarnings === 3) {
+        warningMessage = "Warning: You have uploaded duplicate images 3 times. Further duplicates will result in penalties.";
+      } else if (newWarnings === 4) {
+        warningMessage = "Last Warning: One more duplicate upload and your account will be flagged with reduced eco-points!";
+      } else if (newWarnings >= 5) {
+        warningMessage = "Your account has been flagged for repeated duplicate uploads. You will now receive only 40% eco-points.";
+      }
+
       return res.status(400).json({
         success: false,
-        message: "Old image already used",
+        message: warningMessage,
+        isOldImage: true,
+        duplicateWarnings: newWarnings,
+        isFlagged: newWarnings >= 5,
       });
     }
 
@@ -149,8 +172,18 @@ export const imgHandler = async (req, res) => {
 
         let updatedUser = null;
         try {
-          const points = Number(aiResult.gp) || 0;
+          let points = Number(aiResult.gp) || 0;
           if (points > 0 && req.user && req.user._id) {
+
+            const currentUser = await User.findById(req.user._id);
+            const isFlagged = currentUser?.isFlagged || false;
+            let penaltyApplied = false;
+
+            if (isFlagged && points > 0) {
+              points = Math.round(points * 0.4);
+              penaltyApplied = true;
+            }
+
             const updates = { $inc: { gp: points, totalImages: 1 } };
 
             if (aiResult.score > 0) {
@@ -194,7 +227,12 @@ export const imgHandler = async (req, res) => {
             level: updatedUser.level,
             totalImages: updatedUser.totalImages,
             streak: updatedUser.streak,
+            duplicateWarnings: updatedUser.duplicateWarnings || 0,
+            isFlagged: updatedUser.isFlagged || false,
           } : null,
+          penaltyApplied: penaltyApplied || false,
+          actualGP: Number(aiResult.gp) || 0,
+          awardedGP: points,
         });
 
       } catch (error) {

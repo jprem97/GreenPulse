@@ -80,6 +80,16 @@ const userSchema = new mongoose.Schema({
     default: []
   },
 
+  duplicateWarnings: {
+    type: Number,
+    default: 0
+  },
+
+  isFlagged: {
+    type: Boolean,
+    default: false
+  },
+
   refreshToken: {
     type: String,
     default: null
